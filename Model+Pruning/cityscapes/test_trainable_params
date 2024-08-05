@@ -1,0 +1,26 @@
+import torch
+
+def count_non_zero_parameters(model_state_dict):
+    total_non_zero_params = 0
+    for key, value in model_state_dict.items():
+        if 'weight' in key and 'bn' not in key:
+            non_zero_params = torch.count_nonzero(value).item()
+            total_non_zero_params += non_zero_params
+    return total_non_zero_params
+
+
+
+def main():
+    # Path to your .pth file
+    file_path = "model_weights_pruned_09.pth"
+
+    # Load the model state dictionary
+    model_state_dict = torch.load(file_path, map_location=torch.device('cpu'))
+
+    # Calculate the number of trainable non-zero parameters
+    non_zero_params = count_non_zero_parameters(model_state_dict)
+
+    print("Number of trainable non-zero parameters:", non_zero_params)
+
+if __name__ == "__main__":
+    main()
