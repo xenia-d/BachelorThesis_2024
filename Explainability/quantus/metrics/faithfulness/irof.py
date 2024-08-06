@@ -172,7 +172,7 @@ class IROF(Metric[List[float]]):
         model_predict_kwargs: Optional[Dict] = None,
         softmax: Optional[bool] = True,
         device: Optional[str] = None,
-        batch_size: int = 64,
+        batch_size: int = 500,
         **kwargs,
     ) -> List[float]:
         """
@@ -267,6 +267,9 @@ class IROF(Metric[List[float]]):
 
 
 
+    def move_tensor_to_device(tensor, device):
+        return tensor.to(device)
+
     def evaluate_instance_segmentation(
         self,
         model: ModelInterface,
@@ -292,41 +295,38 @@ class IROF(Metric[List[float]]):
         float
             The evaluation results.
         """
-        # Predict on x.
-        print("yay we evaluate segmentation instance now")
+        
+        # Set the device to GPU if available
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+        model.to(device)
+        
+        
+        # Ensure input tensor is on the appropriate device
         x_input = model.shape_input(x, x.shape, channel_first=True)
+        x_input_tensor = torch.from_numpy(x_input).float().to(device)
+    
 
-        # Convert input to tensor and move to appropriate device
-        x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
-
-        # Ensure model output is handled correctly
         if hasattr(model, 'model'):
             output = model.model(x_input_tensor)
         else:
             output = model(x_input_tensor)
         
-        # Assuming y is the ground truth mask, find the max class prediction per pixel if it's a multi-class segmentation
         y_pred = torch.exp(output[0]).detach().cpu().numpy()
 
-        # print(y_pred)
-        class_index = 6  # Class of interest
+   
+        class_index = 0 # Select class of interest here (0-6 for Cityscapes)
         mask = (y == class_index)
 
         y_pred_squeezed = np.squeeze(y_pred, axis=0)
 
         # Get the scores for target pixels
         scores = y_pred_squeezed[class_index][mask]
-
         # Average scores for target pixels
         average_y_pred_score = np.mean(scores)
 
 
         print("average score original", average_y_pred_score)
-
-        # #  visualize the mask
-        # plt.imshow(mask, cmap='gray')
-        # plt.title('Pixels classified as class 6')
-        # plt.show()
 
 
         # Segment image.
@@ -367,24 +367,22 @@ class IROF(Metric[List[float]]):
             # Convert input to tensor and move to appropriate device
             x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
             
+            # Move input tensor to GPU
+            x_input_tensor = x_input_tensor.to('cuda')
+            
+            # Move model to GPU
+            model.to('cuda')
+
+            
             # Ensure model output is handled correctly
             if hasattr(model, 'model'):
                 output = model.model(x_input_tensor)
             else:
                 output = model(x_input_tensor)
-            
-            # Assuming y is the index of the true class
-            # y_index = y.squeeze()  # Remove batch dimension if exists
-            # y_index = np.clip(y_index, 0, 6)  # Clip indices to valid range [0, 6]
-            # y_pred_prob = torch.softmax(output[0], dim=1).detach().cpu().numpy()
-
-            # print("ypred shape", y_index.shape)
-
-            # y_pred_perturb = y_pred_prob[:, y_index, :, :]
+        
 
             y_pred_perturb = torch.exp(output[0]).detach().cpu().numpy()
             
-            class_index = 6  # Class of interest
             mask = (y == class_index)
 
            
@@ -415,7 +413,14 @@ class IROF(Metric[List[float]]):
 
 
         aoc = len(preds) - utils.calculate_auc(np.array(preds))
-        return aoc
+        
+        if not np.isnan(aoc):
+            print("AOC value: ", aoc, "class: ", class_index)
+            return aoc
+        else:
+            return 0  # Neutral value
+
+
     
     def evaluate_instance_depth(
         self,
@@ -443,12 +448,29 @@ class IROF(Metric[List[float]]):
         float
             The evaluation results.
         """
-        # Predict on x.
-        print("yay we evaluate depth instance now")
-        x_input = model.shape_input(x, x.shape, channel_first=True)
 
-        # Convert input to tensor and move to appropriate device
-        x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
+        # Set the device to GPU if available
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+        
+        
+        # Ensure input tensor is on the appropriate device
+        x_input = model.shape_input(x, x.shape, channel_first=True)
+        x_input_tensor = torch.from_numpy(x_input).float().to(device)
+    
+        # Ensure model output is handled correctly
+        if hasattr(model, 'model'):
+            output = model.model(x_input_tensor)
+        else:
+            output = model(x_input_tensor)
+    
+
+        # Move input tensor to appropriate device (e.g., GPU)
+        if torch.cuda.is_available():
+            x_input_tensor = x_input_tensor.to('cuda')
+        
+        # Ensure model parameters are on the same device as the input tensor
+        model = model.to(x_input_tensor.device)
 
         # Ensure model output is handled correctly
         if hasattr(model, 'model'):
@@ -456,7 +478,7 @@ class IROF(Metric[List[float]]):
         else:
             output = model(x_input_tensor)
         
-        # Assuming y is the ground truth mask, find the max class prediction per pixel if it's a multi-class segmentation
+
         y_pred = torch.exp(output[1]).detach().cpu().numpy()
 
         # Segment image.
@@ -491,11 +513,17 @@ class IROF(Metric[List[float]]):
                 x=x_prev_perturbed, x_perturbed=x_perturbed
             )
 
-            # Predict on perturbed input x.
             x_input = model.shape_input(x_perturbed, x.shape, channel_first=True)
             
             # Convert input to tensor and move to appropriate device
             x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
+            
+            # Move input tensor to GPU
+            x_input_tensor = x_input_tensor.to('cuda')
+            
+            # Move model to GPU
+            model.to('cuda')
+            
             
             # Ensure model output is handled correctly
             if hasattr(model, 'model'):
@@ -506,11 +534,6 @@ class IROF(Metric[List[float]]):
 
             y_pred_perturb = torch.exp(output[1]).detach().cpu().numpy()
 
-            average_y_pred_perturb = np.mean(y_pred_perturb)
-
-
-            # Reshape y_pred_perturb to 2D array
-            y_pred_perturb_2d = y_pred_perturb[0][0]
 
             # # Plot depth map after perturbation
             # plt.figure()
@@ -567,14 +590,6 @@ class IROF(Metric[List[float]]):
         # Calculate AUC
         auc_value = auc(range(len(variations)), variations)
         return auc_value
-    
-        # report seg and depth separaely bcause of unnormalized valus
-        # use forward hooks(function telling pythin what to do n the forward pass of  layer)
-        # activations list - presoftmax values to compute irof on the logits before softmax
-        # delete the the last softmax layera and use logits directly - make a separate class 
-        # instead of returning the irof metric, return the variations and normalize based on the highest variation  
-        # recordng a percentage varation for both tasks 
-
 
 
     def custom_preprocess(
@@ -642,22 +657,21 @@ class IROF(Metric[List[float]]):
         scores_batch:
             The evaluation results.
         """
-
-        if self.task == "segmentation":
-            return [
-                self.evaluate_instance_segmentation(model=model, x=x, y=y, a=a)
-                for x, y, a in zip(x_batch, y_batch, a_batch)
-            ]
-        elif self.task == "depth":
-            return [
-                self.evaluate_instance_depth(model=model, x=x, y=y, a=a)
-                for x, y, a in zip(x_batch, y_batch, a_batch)
-            ]
-        else:
-            raise ValueError("Invalid task provided.")
         
-
-        # return [
-        #     self.evaluate_instance(model=model, x=x, y=y, a=a)
-        #     for x, y, a in zip(x_batch, y_batch, a_batch)
-        # ]
+        all_irof_scores = [] 
+    
+        # Iterate over each instance in the batch and compute IROF score for each
+        for x, y, a in zip(x_batch, y_batch, a_batch):
+            if self.task == "segmentation":
+                irof_score = self.evaluate_instance_segmentation(model=model, x=x, y=y, a=a)
+                all_irof_scores.append(irof_score)  # Append the computed IROF score to the list
+            elif self.task == "depth":
+                irof_score = self.evaluate_instance_depth(model=model, x=x, y=y, a=a)
+                all_irof_scores.append(irof_score)  # Append the computed IROF score to the list
+            else:
+                raise ValueError("Invalid task provided.")
+    
+            print("testing the list", all_irof_scores)
+    
+        return all_irof_scores  # Return the list containing all IROF scores
+                
