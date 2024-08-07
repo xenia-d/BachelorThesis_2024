@@ -295,41 +295,29 @@ class IROF(Metric[List[float]]):
         float
             The evaluation results.
         """
-        
         # Set the device to GPU if available
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
         model.to(device)
-        
-        
+
         # Ensure input tensor is on the appropriate device
         x_input = model.shape_input(x, x.shape, channel_first=True)
         x_input_tensor = torch.from_numpy(x_input).float().to(device)
-    
 
-        if hasattr(model, 'model'):
-            output = model.model(x_input_tensor)
-        else:
-            output = model(x_input_tensor)
-        
+        # Obtain model output
+        output = model.model(x_input_tensor) if hasattr(model, 'model') else model(x_input_tensor)
         y_pred = torch.exp(output[0]).detach().cpu().numpy()
 
-   
-        class_index = 0 # Select class of interest here (0-6 for Cityscapes)
+        # Select class of interest
+        class_index = 0  # Change this value for the desired class (0-6 for Cityscapes)
         mask = (y == class_index)
 
+        # Get and average the scores for target pixels
         y_pred_squeezed = np.squeeze(y_pred, axis=0)
-
-        # Get the scores for target pixels
         scores = y_pred_squeezed[class_index][mask]
-        # Average scores for target pixels
         average_y_pred_score = np.mean(scores)
+        print("Average score original:", average_y_pred_score)
 
-
-        print("average score original", average_y_pred_score)
-
-
-        # Segment image.
+        # Segment image
         segments = utils.get_superpixel_segments(
             img=np.moveaxis(x, 0, -1).astype("double"),
             segmentation_method=self.segmentation_method,
@@ -337,21 +325,18 @@ class IROF(Metric[List[float]]):
         nr_segments = len(np.unique(segments))
         asserts.assert_nr_segments(nr_segments=nr_segments)
 
-        # Calculate average attribution of each segment.
-        att_segs = np.zeros(nr_segments)
-        for i, s in enumerate(range(nr_segments)):
-            att_segs[i] = np.mean(a[:, segments == s])
+        # Calculate average attribution of each segment
+        att_segs = np.array([np.mean(a[:, segments == s]) for s in range(nr_segments)])
 
-        # Sort segments based on the mean attribution (descending order).
+        # Sort segments based on the mean attribution (descending order)
         s_indices = np.argsort(-att_segs)
 
         preds = []
         x_prev_perturbed = x
 
         for i_ix, s_ix in enumerate(s_indices):
-            # Perturb input by indices of attributions.
+            # Perturb input by indices of attributions
             a_ix = np.nonzero((segments == s_ix).flatten())[0]
-
             x_perturbed = self.perturb_func(
                 arr=x_prev_perturbed,
                 indices=a_ix,
@@ -361,48 +346,26 @@ class IROF(Metric[List[float]]):
                 x=x_prev_perturbed, x_perturbed=x_perturbed
             )
 
-            # Predict on perturbed input x.
+            # Predict on perturbed input x
             x_input = model.shape_input(x_perturbed, x.shape, channel_first=True)
-            
-            # Convert input to tensor and move to appropriate device
-            x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
-            
-            # Move input tensor to GPU
-            x_input_tensor = x_input_tensor.to('cuda')
-            
-            # Move model to GPU
-            model.to('cuda')
+            x_input_tensor = torch.from_numpy(x_input).float().to(device)
 
-            
-            # Ensure model output is handled correctly
-            if hasattr(model, 'model'):
-                output = model.model(x_input_tensor)
-            else:
-                output = model(x_input_tensor)
-        
-
+            # Obtain model output for perturbed input
+            output = model.model(x_input_tensor) if hasattr(model, 'model') else model(x_input_tensor)
             y_pred_perturb = torch.exp(output[0]).detach().cpu().numpy()
-            
-            mask = (y == class_index)
 
-           
+            # Get and average the scores for target pixels in the perturbed output
             y_pred_perturb_squeezed = np.squeeze(y_pred_perturb, axis=0)
-
-            # Get the scores for target pixels
             scores = y_pred_perturb_squeezed[class_index][mask]
-
-            # Average scores for target pixels
             average_y_pred_perturb_score = np.mean(scores)
+            print("Average perturbed score:", average_y_pred_perturb_score)
 
-            print("average perturbed score", average_y_pred_perturb_score)
-            
-            # Normalize the scores to be within range [0, 1].
+            # Normalize the scores and store the average ratio
             average_ratio = np.mean(average_y_pred_perturb_score / average_y_pred_score)
             preds.append(float(average_ratio))
             x_prev_perturbed = x_perturbed
 
-
-        # # Plot AOC curve
+        # Uncomment the following block to plot the AOC curve
         # plt.figure()
         # plt.plot(range(len(preds)), preds, marker='o')
         # plt.title('AOC Curve')
@@ -411,14 +374,15 @@ class IROF(Metric[List[float]]):
         # plt.grid(True)
         # plt.show()
 
-
+        # Calculate AOC
         aoc = len(preds) - utils.calculate_auc(np.array(preds))
-        
+
         if not np.isnan(aoc):
-            print("AOC value: ", aoc, "class: ", class_index)
+            print("AOC value:", aoc, "class:", class_index)
             return aoc
         else:
             return 0  # Neutral value
+
 
 
     
@@ -452,36 +416,24 @@ class IROF(Metric[List[float]]):
         # Set the device to GPU if available
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model.to(device)
-        
-        
+
         # Ensure input tensor is on the appropriate device
         x_input = model.shape_input(x, x.shape, channel_first=True)
         x_input_tensor = torch.from_numpy(x_input).float().to(device)
-    
+
         # Ensure model output is handled correctly
-        if hasattr(model, 'model'):
-            output = model.model(x_input_tensor)
-        else:
-            output = model(x_input_tensor)
-    
+        output = model.model(x_input_tensor) if hasattr(model, 'model') else model(x_input_tensor)
 
         # Move input tensor to appropriate device (e.g., GPU)
-        if torch.cuda.is_available():
-            x_input_tensor = x_input_tensor.to('cuda')
-        
+        x_input_tensor = x_input_tensor.to(device)
+
         # Ensure model parameters are on the same device as the input tensor
-        model = model.to(x_input_tensor.device)
+        model.to(x_input_tensor.device)
 
-        # Ensure model output is handled correctly
-        if hasattr(model, 'model'):
-            output = model.model(x_input_tensor)
-        else:
-            output = model(x_input_tensor)
-        
-
+        # Obtain prediction and move to CPU for further processing
         y_pred = torch.exp(output[1]).detach().cpu().numpy()
 
-        # Segment image.
+        # Segment image
         segments = utils.get_superpixel_segments(
             img=np.moveaxis(x, 0, -1).astype("double"),
             segmentation_method=self.segmentation_method,
@@ -489,12 +441,10 @@ class IROF(Metric[List[float]]):
         nr_segments = len(np.unique(segments))
         asserts.assert_nr_segments(nr_segments=nr_segments)
 
-        # Calculate average attribution of each segment.
-        att_segs = np.zeros(nr_segments)
-        for i, s in enumerate(range(nr_segments)):
-            att_segs[i] = np.mean(a[:, segments == s])
+        # Calculate average attribution of each segment
+        att_segs = np.array([np.mean(a[:, segments == s]) for s in range(nr_segments)])
 
-        # Sort segments based on the mean attribution (descending order).
+        # Sort segments based on the mean attribution (descending order)
         s_indices = np.argsort(-att_segs)
 
         variations = []
@@ -514,82 +464,40 @@ class IROF(Metric[List[float]]):
             )
 
             x_input = model.shape_input(x_perturbed, x.shape, channel_first=True)
-            
-            # Convert input to tensor and move to appropriate device
+          # Convert input to tensor and move to the appropriate device
             x_input_tensor = torch.from_numpy(x_input).float().to(model.device)
-            
-            # Move input tensor to GPU
-            x_input_tensor = x_input_tensor.to('cuda')
-            
-            # Move model to GPU
-            model.to('cuda')
-            
-            
-            # Ensure model output is handled correctly
-            if hasattr(model, 'model'):
-                output = model.model(x_input_tensor)
-            else:
-                output = model(x_input_tensor)
-            
 
+            # Ensure input tensor and model are on the GPU
+            x_input_tensor = x_input_tensor.to('cuda')
+            model.to('cuda')
+
+            output = model.model(x_input_tensor) if hasattr(model, 'model') else model(x_input_tensor)
+
+            # Obtain prediction and move to CPU for further processing
             y_pred_perturb = torch.exp(output[1]).detach().cpu().numpy()
 
-
-            # # Plot depth map after perturbation
-            # plt.figure()
-            # plt.imshow(y_pred_perturb_2d, cmap='viridis')  # Assuming 'jet' colormap for depth visualization
-            # plt.title('Depth Map after Iteration {}'.format(i_ix + 1))
-            # plt.colorbar(label='Depth')
-            # plt.axis('off')
-            # plt.show()
-
-            # variation = abs((average_y_pred_perturb - average_y_pred) / average_y_pred) * 100
-
             # Calculate per-pixel absolute difference between original and perturbed depth maps
-            pixel_diff = np.abs((y_pred_perturb - y_pred)/y_pred)
+            pixel_diff = np.abs((y_pred_perturb - y_pred) / y_pred)
             # Calculate the average variation
             variation = np.mean(pixel_diff) * 100
 
-
-            print("%variation after perturbation", variation)
+            print("% variation after perturbation:", variation)
             variations.append(variation)
 
-            # # Create a new figure with subplots
-            # plt.figure(figsize=(12, 6))
-
-            # # Plot depth map after perturbation
-            # plt.subplot(1, 2, 1)  # Subplot with 1 row, 2 columns, and index 1
-            # plt.imshow(y_pred_perturb_2d, cmap='viridis')  # Assuming 'viridis' colormap for depth visualization
-            # plt.title('Depth Map after Iteration {}'.format(i_ix + 1))
-            # plt.colorbar(label='Depth')
-            # plt.axis('off')
-
-            # # # Plot perturbed image
-            # plt.subplot(1, 2, 2)  # Subplot with 1 row, 2 columns, and index 2
-            # plt.imshow(np.transpose(x_perturbed, (1, 2, 0)))
-            # plt.title('Perturbed Image after Iteration {}'.format(i_ix + 1))
-            # plt.axis('off')
-
-            # # Adjust layout
-            # plt.tight_layout()
-
-            # # Show the plots
-            # plt.show()
             x_prev_perturbed = x_perturbed
 
+            # Plot IROF curve
+            plt.figure()
+            plt.plot(range(len(variations)), variations, marker='o')
+            plt.title('IROF Curve')
+            plt.xlabel('Number of Segments Removed')
+            plt.ylabel('Absolute % Variation')
+            plt.grid(True)
+            plt.show()
 
-        # Plot AUC curve
-        plt.figure()
-        plt.plot(range(len(variations)), variations, marker='o')
-        plt.title('IROF Curve')
-        plt.xlabel('Number of Segments Removed')
-        plt.ylabel('Absolute % Variation')
-        plt.grid(True)
-        plt.show()
-
-        # Calculate AUC
-        auc_value = auc(range(len(variations)), variations)
-        return auc_value
+            # Calculate AUC
+            auc_value = auc(range(len(variations)), variations)
+            return auc_value
 
 
     def custom_preprocess(
