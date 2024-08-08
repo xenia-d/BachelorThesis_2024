@@ -1,22 +1,13 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
 import warnings
 import sys
-sys.path.append('../')  # Assuming the parent directory containing pytorch_grad_cam is one level above
+sys.path.append('../')  
 
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
-#from torchvision.models.segmentation import deeplabv3_resnet50
 import torch
 import torch.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-# import requests
-# import torchvision
 import os
 from collections import OrderedDict
 from PIL import Image
@@ -27,14 +18,11 @@ import torchvision.transforms as transforms
 from pytorch_grad_cam.utils.image import show_cam_on_image, preprocess_image
 import numpy as np
 import matplotlib.pyplot as plt
-# import webcolors
 from torch.utils.data import DataLoader
 from quantus import IROF
+from pytorch_grad_cam import GradCAM
 
 
-# In[2]:
-
-# Set the device to GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -51,12 +39,9 @@ test_loader = torch.utils.data.DataLoader(
 )
 test_batch = len(test_loader)
 
-# Load the image, segmentation label, and depth map
-# image_data, semantic, depth = dataset[i_want_this_image]
 image_counter = 0
-i_want_this_image = 33
 
-# Variables to store IROF inputs
+# For IROF outputs
 x_batches = []
 y_batches = []
 a_batches = []
@@ -69,24 +54,14 @@ os.makedirs(output_dir, exist_ok=True)
 
 for i, batch in enumerate(test_loader):
     print("we are at image: ", image_counter)
-    # if i == i_want_this_image:
-    #     test_data, semantic_label, depth_label = batch
-    #     break
 
     test_data, semantic_label, depth_label = batch
 
     rgb_img = np.float32(test_data) / 255
     input_tensor = torch.tensor(test_data).unsqueeze(0)
-
     input_tensor = input_tensor.float()
-
-    # print(input_tensor.shape)
-
     test_data_np = test_data.squeeze(0).cpu().numpy()
-
     test_data_np = np.transpose(test_data_np, (1, 2, 0))
-    # Print the shape of the image to verify its dimensions
-    # print("Image shape:", test_data_np.shape)
 
 
     # # Visualize the image
@@ -94,66 +69,34 @@ for i, batch in enumerate(test_loader):
     # plt.axis('off')
     # plt.show()
 
-
-    # In[3]:
-
-
     model = SegNetMtan()
-    model.load_state_dict(torch.load('original_famo_weights_it3.pth', map_location=device))
+    model.load_state_dict(torch.load('original_famo_weights_it3.pth', map_location=device)) # Add path to model weights here
     model.eval()
 
-    print("original model it3")
-    # print(model_state_dict.keys())
-
-    # print(model.state_dict().keys())
     if torch.cuda.is_available():
         model = model.cuda()
         test_data = test_data.cuda()
 
-    output = model(test_data)  # Corrected this line to pass input_tensor to the model
-    # print(output)
-    # for i, tensor in enumerate(output):
-        # print(f"Output {i}: type={type(tensor)}, shape={tensor.shape}")
+    output = model(test_data) 
+    output_keys = ['output_0', 'output_1'] 
 
-    output_keys = ['output_0', 'output_1']  # Add more keys if needed
-
-    # Create a dictionary from the list of tensors using the predefined keys
     output_dict = OrderedDict(zip(output_keys, output))
 
-    # print(type(output_dict), output_dict.keys())
-
-
-    # In[4]:
-
-
-    # Convert the semantic segmentation label to numpy array
     semantic_np = semantic_label.squeeze(0).numpy()
-
-    # # Get the unique classes present in the semantic map
-    # unique_classes = np.unique(semantic_np)
-    # print(len(unique_classes))
-
-    # Map class indices back to class labels using the sem_classes list
-    sem_classes = [
-        'road', 'sidewalk', 'parking', 'rail track', 'person',  'rider', 'car', 
-    ]
-
     # Define colormap for visualization
-    num_classes = len(sem_classes)
+    num_classes = 7
     color_map = plt.cm.get_cmap('viridis', num_classes)
 
     # Create a color map dictionary assigning a unique color to each class label
-    class_color_map = {class_label: color_map(i) for i, class_label in enumerate(sem_classes)}
+    class_color_map = {class_label: color_map(i) for i, class_label in range(7)}
 
 
 
     # Iterate through unique classes present in the segmentation map
     unique_classes = np.unique(semantic_np)
     for class_index in unique_classes:
-        # Check if the class index is within the range of available class labels
-        if class_index < len(sem_classes):
-            class_name = sem_classes[int(class_index)]
-            color_rgb = class_color_map[class_name][:3]  # Extract RGB values
+        if class_index < 7:
+            color_rgb = class_color_map[class_index][:3]  # Extract RGB values
             # Convert RGB values to hexadecimal format
             hex_color = '#{:02x}{:02x}{:02x}'.format(int(color_rgb[0] * 255), int(color_rgb[1] * 255), int(color_rgb[2] * 255))
             # print(f"Class: {class_name}, Color: {hex_color}")
@@ -164,37 +107,16 @@ for i, batch in enumerate(test_loader):
     # plt.axis('off')
     # plt.show()
 
-
-    # In[5]:
-
-
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-
     #SHOWING THE SEGMAP
     
-    
-
     normalized_masks = torch.nn.functional.softmax(output[0], dim=1).cpu()
-
-    # Get the class prediction by selecting the class index with maximum probability
     class_predict = normalized_masks.argmax(dim=1).numpy()
-
-    # Get the unique classes present in the prediction
     unique_classes = np.unique(class_predict)
-
-    # Define a colormap based on the number of unique classes
     color_map = plt.cm.get_cmap('viridis', len(unique_classes))
-
-    # Apply the colormap to the class prediction directly
     color_image = color_map(class_predict)
-
-    # Squeeze the color_image if it has an extra dimension
     color_image = np.squeeze(color_image)
 
 
-    # Ensure values are in the correct range (0 to 1)
     color_image = np.clip(color_image, 0, 1)
 
     # # Display the color image
@@ -203,15 +125,7 @@ for i, batch in enumerate(test_loader):
     # plt.show()
 
 
-
-    # In[6]:
-
-    normalized_masks = torch.nn.functional.softmax(output[0], dim=1).cpu()
-
-    # image_np = np.transpose(image_np, (1, 2, 0))
-
-    # car_category = sem_class_to_idx["car"]
-    class_category = 0
+    class_category = 0 # Enter desired class for explanation here (index 0-6 for Cityscapes)
 
 
     class_mask = normalized_masks[0, :, :, :].argmax(axis=0).detach().numpy()
@@ -231,10 +145,7 @@ for i, batch in enumerate(test_loader):
     Image.fromarray(both_images)
 
 
-    # In[7]:
-
-
-    from pytorch_grad_cam import GradCAM
+    # GradCAM part
 
     class SemanticSegmentationTarget:
         def __init__(self, category, mask):
@@ -247,23 +158,11 @@ for i, batch in enumerate(test_loader):
             segmentation_output_tp = segmentation_output_tp.squeeze(0)
             return (segmentation_output_tp[self.category, :, :] * self.mask).sum()
         
-    # # Print shapes and values for debugging
-    # print("Input tensor shape:", input_tensor.shape)
-    # print("RGB image shape:", rgb_img.shape)
-    # print("Semantic segmentation mask shape:", semantic_np.shape)
-    # print("Car mask shape:", car_mask_float.shape)
-
-    # print(semantic_np.shape)
-
-    # segmentation_output_tp = torch.transpose(semantic_np, 0, 1)
 
     segmentation_output_tp = semantic_np
     input_tensor = input_tensor.squeeze(1)
-    # print(input_tensor.shape)
-    # print("Semantic segmentation mask shape (tp):", segmentation_output_tp.shape)
 
-    target_layers = [model.segnet.conv_block_dec[4]]  # Choose the desired layer for visualization
-
+    target_layers = [model.segnet.conv_block_dec[4]]  # Specift target layer for explanation
     targets = [SemanticSegmentationTarget(category=class_category, mask=class_mask_float)]
 
 
@@ -271,13 +170,8 @@ for i, batch in enumerate(test_loader):
         # Initialize GradCAM
         cam = GradCAM(model=model, target_layers=target_layers)
 
-        # print(input_tensor)
         # Compute GradCAM
         grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0, :]
-
-        # Transpose the original image to match the dimensions expected by show_cam_on_image
-
-        # image_np_tp = image_np.transpose(2, 0, 1)
         image_float = image_np_uint8.astype(np.float32) / 255.0
 
         # Visualize GradCAM
@@ -332,8 +226,6 @@ for i, batch in enumerate(test_loader):
 
     image_counter += 1
 
-# In[9]:
-
 
 irof_scores = []
 
@@ -349,7 +241,7 @@ else:
     x_batches = np.array([])
     y_batches = np.array([])
     a_batches = np.array([])
-# print(x_batches)
+
 
 # Instantiate IROF metric
 irof_metric = IROF(task='segmentation')
