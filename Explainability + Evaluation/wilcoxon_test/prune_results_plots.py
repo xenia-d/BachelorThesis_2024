@@ -66,7 +66,7 @@ metrics = {
 }
 
 # Bar plot for each metric
-labels = ["Unpruned", "Pruned 0.5", "Pruned 0.6", "Pruned 0.7", "Pruned 0.8", "Pruned 0.9"]
+labels = ["0", "0.5", "0.6", "0.7", "0.8", "0.9"]
 colors = ["darkblue", "lightsteelblue", "lightsteelblue", "lightsteelblue", "lightsteelblue", "lightsteelblue"]
 
 for metric_name, data in metrics.items():
@@ -75,9 +75,11 @@ for metric_name, data in metrics.items():
     fig, ax = plt.subplots()
     bars = ax.bar(labels, means, color=colors)
     
-    # Add labels and title
-    ax.set_xlabel('Model Type')
-    ax.set_ylabel(metric_name)
+    # Add labels and title with increased fontsize
+    ax.set_xlabel('Prune ratio of model', fontsize=14)
+    ax.set_ylabel(metric_name, fontsize=14)
     
-    plt.xticks(rotation=45)
+    # Increase fontsize of x-ticks
+    plt.xticks(fontsize=12)
+    
     plt.show()

@@ -1,6 +1,6 @@
 import torch
 from netslim import prune, load_pruned_model
-from models import SegNet, SegNetMtan  # Import your model class
+from models import SegNet, SegNetMtan 
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
@@ -12,7 +12,6 @@ def load_model(model_class, weights_path):
         return load_pruned_model(model, loaded_model)
     return loaded_model
 
-# Create an instance of your model architecture
 model = SegNetMtan()
 
 # Count parameters
@@ -22,7 +21,7 @@ print("Total parameters in the model before pruning:", total_params_famo)
 # Load the pruned weights into the model
 pruned_model = load_model(SegNetMtan, 'experiments/cityscapes/model_compressed_weights.pth')
 
-pruned_model = prune(pruned_model, (128, 256, 3)) # by default, use network slimming
+pruned_model = prune(pruned_model, (128, 256, 3)) 
 
 # Count parameters after pruning
 total_params_pruned = count_parameters(pruned_model)

@@ -181,12 +181,9 @@ class _SegNet(nn.Module):
         # Iterate through the convolutional layers and modify their output channels
         for name, module in self.named_modules():
             if isinstance(module, nn.Conv2d) and name in custom_list:
-                # Find the corresponding entry in custom_list for this module
                 for layer_name, filter_size in custom_list:
                     if layer_name == name:
-                        # Modify the number of output channels based on the pruned filter size
                         module.out_channels = filter_size[1]
-                        # Find the corresponding batch normalization layer and adjust its number of features
                         for child_name, child_module in self.named_modules():
                             if isinstance(child_module, nn.BatchNorm2d) and child_name == name.replace('conv', 'bn'):
                                 # Update the number of features for the batch normalization layer
@@ -318,9 +315,7 @@ class SegNetMtan(nn.Module):
         # Iterate through the convolutional layers and modify their output channels
         for name, module in self.named_modules():
             for layer_name, filter_size in custom_list:
-                if name.endswith(layer_name):  # Check if the end of the module name matches the custom name
-                    # print("check1\n", layer_name, filter_size)
-                    # Modify the number of output channels based on the pruned filter size
+                if name.endswith(layer_name):  
                     module.out_channels = filter_size[0]
                     # Find the corresponding batch normalization layer and adjust its number of features
                     print("Filter size [0]: ", filter_size[0], layer_name)
@@ -478,12 +473,9 @@ class SegNetSplit(nn.Module):
         # Iterate through the convolutional layers and modify their output channels
         for name, module in self.named_modules():
             if isinstance(module, nn.Conv2d) and name in custom_list:
-                # Find the corresponding entry in custom_list for this module
                 for layer_name, filter_size in custom_list:
                     if layer_name == name:
-                        # Modify the number of output channels based on the pruned filter size
                         module.out_channels = filter_size[1]
-                        # Find the corresponding batch normalization layer and adjust its number of features
                         for child_name, child_module in self.named_modules():
                             if isinstance(child_module, nn.BatchNorm2d) and child_name == name.replace('conv', 'bn'):
                                 # Update the number of features for the batch normalization layer
@@ -546,14 +538,11 @@ class SegNet(nn.Module):
     
     def modify_conv_layers(self, custom_list):
         # Iterate through the convolutional layers and modify their output channels
-        print("weeeeeeeeeeeeeeeeeeeeeee")
         for name, module in self.named_modules():
             if isinstance(module, torch.nn.Conv2d) and name in custom_list:
-                print("weeeeeeeeeeeeeeeeeeeeeee")
                 # Find the corresponding entry in custom_list for this module
                 for layer_name, filter_size in custom_list:
                     if layer_name == name:
-                        print("weeeeeeeeeeeeeeeeeeeeeee")
                         # Modify the number of output channels based on the pruned filter size
                         module.out_channels = filter_size[1]
                         # Find the corresponding batch normalization layer and adjust its number of features
